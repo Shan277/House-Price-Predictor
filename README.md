@@ -1,20 +1,12 @@
 # 🏠 House Price Predictor
 
-<div align="center">
+![Python](https://img.shields.io/badge/PYTHON-3.8%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Streamlit](https://img.shields.io/badge/STREAMLIT-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)
+![scikit-learn](https://img.shields.io/badge/SCIKIT--LEARN-F7931E?style=for-the-badge&logo=scikit-learn&logoColor=white)
+![Pandas](https://img.shields.io/badge/PANDAS-150458?style=for-the-badge&logo=pandas&logoColor=white)
+![NumPy](https://img.shields.io/badge/NUMPY-013243?style=for-the-badge&logo=numpy&logoColor=white)
 
-![Python](https://img.shields.io/badge/Python-3.8%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)
-![scikit-learn](https://img.shields.io/badge/scikit--learn-F7931E?style=for-the-badge&logo=scikit-learn&logoColor=white)
-![Pandas](https://img.shields.io/badge/Pandas-150458?style=for-the-badge&logo=pandas&logoColor=white)
-![NumPy](https://img.shields.io/badge/NumPy-013243?style=for-the-badge&logo=numpy&logoColor=white)
-
-A machine learning web application that predicts residential house sale prices using a tuned **Gradient Boosting Regressor**, trained on the classic Ames Housing Dataset. The model is served via an interactive **Streamlit** frontend.
-
-[Demo](#demo) · [Features](#features) · [Installation](#installation) · [Usage](#usage) · [Model Details](#model-details) · [Project Structure](#project-structure)
-
----
-
-</div>
+A machine learning project that predicts residential house sale prices using the classic **Ames Housing Dataset**. The core focus is a carefully engineered ML pipeline — covering missing value imputation, feature encoding, scaling, multi-model benchmarking, and hyperparameter tuning — culminating in a tuned **Gradient Boosting Regressor** exported for deployment.
 
 ---
 
