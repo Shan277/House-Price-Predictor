@@ -8,7 +8,7 @@
 ![Pandas](https://img.shields.io/badge/Pandas-150458?style=for-the-badge&logo=pandas&logoColor=white)
 ![NumPy](https://img.shields.io/badge/NumPy-013243?style=for-the-badge&logo=numpy&logoColor=white)
 
-**An interactive machine learning web app that predicts house sale prices based on key property features.**
+A machine learning web application that predicts residential house sale prices using a tuned **Gradient Boosting Regressor**, trained on the classic Ames Housing Dataset. The model is served via an interactive **Streamlit** frontend.
 
 [Demo](#demo) · [Features](#features) · [Installation](#installation) · [Usage](#usage) · [Model Details](#model-details) · [Project Structure](#project-structure)
 
@@ -16,202 +16,197 @@
 
 </div>
 
-## 📸 Demo
-
-> Enter property details using the intuitive sidebar controls and instantly receive a predicted sale price powered by a trained regression model.
-
-```
-🏡  Overall Quality:   ████████░░  8/10
-📐  Living Area:       1,850 sq ft
-🛏️  Bedrooms:          3
-🚿  Full Bathrooms:    2
-🚗  Garage Size:       2 cars
-
-  → Estimated Sale Price:  $214,500
-```
-
 ---
 
-## ✨ Features
-
-- **Interactive UI** — Sliders, dropdowns, and number inputs for a seamless experience
-- **Real-time prediction** — Instantly estimates sale price with a single button click
-- **Robust preprocessing** — Ordinal encoding + one-hot encoding + feature scaling, matching the training pipeline exactly
-- **Training-aligned inference** — Uses saved `scaler.pkl` and `column_names.pkl` to guarantee consistent feature alignment
-- **Handles edge cases** — Missing dummy columns are filled with `0`; extra columns are dropped automatically
-
----
-
-## 🧩 Input Features
-
-| Feature | Type | Description |
-|---|---|---|
-| `OverallQual` | Slider (1–10) | Overall material and finish quality |
-| `OverallCond` | Slider (1–10) | Overall condition of the house |
-| `YearBuilt` | Number | Original construction year |
-| `GrLivArea` | Number | Above-grade living area (sq ft) |
-| `TotalBsmtSF` | Number | Total basement area (sq ft) |
-| `GarageCars` | Number | Garage capacity (number of cars) |
-| `FullBath` | Number | Full bathrooms above grade |
-| `BedroomAbvGr` | Number | Bedrooms above grade |
-| `KitchenQual` | Dropdown | Kitchen quality (Po / Fa / TA / Gd / Ex) |
-
----
-
-## 🗂️ Project Structure
+## 📁 Project Structure
 
 ```
 house-price-predictor/
 │
-├── app.py                  # Streamlit app — UI + inference pipeline
-├── house_model.pkl         # Trained regression model
-├── scaler.pkl              # Fitted StandardScaler (from training)
-├── column_names.pkl        # Ordered feature column list (from training)
+├── House-Prediction.ipynb   # Full ML pipeline (EDA → training → export)
+├── app.py                   # Streamlit web application
+├── train.csv                # Training data (Ames Housing Dataset)
+├── test.csv                 # Test data
 │
-├── notebook/
-│   └── training.ipynb      # Model training, EDA, and preprocessing notebook
-│
-└── README.md
+├── house_model.pkl          # Serialized trained model
+├── scaler.pkl               # Serialized StandardScaler
+└── column_names.pkl         # Serialized training column order
 ```
 
 ---
 
-## ⚙️ Installation
+## ⚙️ Tech Stack
+
+| Layer | Library / Tool |
+|---|---|
+| Data Processing | `pandas`, `numpy` |
+| Visualization | `matplotlib`, `seaborn` |
+| Encoding | `pandas.CategoricalDtype` |
+| Scaling | `sklearn.preprocessing.StandardScaler` |
+| Modeling | `scikit-learn`, `xgboost` |
+| Hyperparameter Tuning | `RandomizedSearchCV` |
+| Serialization | `pickle` |
+| Web App | `streamlit` |
+
+---
+
+## 🔬 ML Pipeline Overview
+
+### 1. Data Integration
+Training and test sets are concatenated for unified preprocessing:
+```python
+df = pd.concat([df_train, df_test])
+```
+
+### 2. Missing Value Imputation
+Missing values were handled using domain knowledge and statistical reasoning:
+
+| Strategy | Features |
+|---|---|
+| **Mode** (categorical) | `MSZoning`, `Electrical`, `KitchenQual`, `Functional`, `SaleType` |
+| **Median** (skewed numerical) | `LotFrontage` |
+| **Constant `"NA"`** (domain knowledge) | `Alley`, `FireplaceQu`, `PoolQC`, `Fence`, `MiscFeature`, all Basement & Garage categoricals |
+| **Constant `0`** (absence of feature) | All Basement & Garage numerical features |
+
+### 3. Feature Transformation
+Year and month columns were converted from numeric to categorical strings to prevent the model from treating them as continuous ordinal values:
+```python
+for_num_conv = ["MSSubClass", "YearBuilt", "YearRemodAdd", "GarageYrBlt", "MoSold", "YrSold"]
+for feat in for_num_conv:
+    df_mvi[feat] = df_mvi[feat].astype(str)
+
+# Month numbers converted to abbreviations (e.g., 6 → "Jun")
+df_mvi["MoSold"] = df_mvi["MoSold"].apply(lambda x: calendar.month_abbr[x])
+```
+
+### 4. Encoding
+
+**Ordinal Encoding** — applied to 17 quality/condition features where order matters (e.g., `Po < Fa < TA < Gd < Ex`):
+```python
+df_mvi["KitchenQual"] = df_mvi["KitchenQual"].astype(
+    CategoricalDtype(categories=["Po", "Fa", "TA", "Gd", "Ex"], ordered=True)
+).cat.codes
+```
+
+**One-Hot Encoding** — applied to all remaining nominal categorical columns:
+```python
+object_features = df_encode.select_dtypes(include="object").columns.tolist()
+df_encode = pd.get_dummies(df_encode, columns=object_features, drop_first=True)
+```
+
+### 5. Feature Scaling
+`StandardScaler` (z-score normalization) was fit **only on training data** and persisted for use during inference:
+```python
+# Formula: z = (x - μ) / σ
+sc = StandardScaler()
+sc.fit(X_train)
+
+pickle.dump(sc, open("scaler.pkl", "wb"))
+pickle.dump(list(X_train.columns), open("column_names.pkl", "wb"))
+
+X_train = sc.transform(X_train)
+X_test = sc.transform(X_test)
+```
+
+### 6. Model Selection
+Nine regression models were evaluated using **7-Fold Cross-Validation** with R² scoring:
+
+```python
+models = {
+    "LinearRegression", "SVR", "SGDRegressor",
+    "KNeighborsRegressor", "GaussianProcessRegressor",
+    "DecisionTreeRegressor", "GradientBoostingRegressor",
+    "RandomForestRegressor", "XGBRegressor"
+}
+
+def test_model(model):
+    cv = KFold(n_splits=7, shuffle=True, random_state=45)
+    r2 = make_scorer(r2_score)
+    r2_val_score = cross_val_score(model, X_train, y_train, cv=cv, scoring=r2)
+    return [r2_val_score.mean()]
+```
+
+**GradientBoostingRegressor** achieved the best cross-validated R² and was selected for tuning.
+
+### 7. Hyperparameter Tuning
+`RandomizedSearchCV` with 25 iterations was used to efficiently search the hyperparameter space:
+```python
+param_dist = {
+    "n_estimators":      [100, 200, 300, 400, 500],
+    "learning_rate":     [0.01, 0.03, 0.05, 0.1],
+    "max_depth":         [3, 4, 5],
+    "min_samples_split": [2, 5, 10],
+    "min_samples_leaf":  [1, 2, 4],
+    "subsample":         [0.8, 0.9, 1.0]
+}
+
+random_search = RandomizedSearchCV(
+    gbr, param_distributions=param_dist,
+    n_iter=25, cv=cv, scoring="r2",
+    n_jobs=-1, random_state=42
+)
+```
+
+The best estimator was retrained on the full training set and serialized:
+```python
+pickle.dump(best_model, open("house_model.pkl", "wb"))
+```
+
+---
+
+## 🖥️ Running the App
 
 ### Prerequisites
 
-- Python 3.8 or higher
-- pip
-
-### 1. Clone the repository
-
 ```bash
-git clone https://github.com/your-username/house-price-predictor.git
-cd house-price-predictor
+pip install streamlit scikit-learn pandas numpy xgboost
 ```
 
-### 2. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-**`requirements.txt`**
-```
-streamlit
-numpy
-pandas
-scikit-learn
-```
-
-### 3. Ensure model files are present
-
-Make sure the following files are in the root directory:
-
-```
-house_model.pkl
-scaler.pkl
-column_names.pkl
-```
-
-> ⚠️ These files are generated during model training. If missing, run the training notebook first.
-
----
-
-## 🚀 Usage
+### Launch
 
 ```bash
 streamlit run app.py
 ```
 
-Then open your browser at **`http://localhost:8501`**.
+### How It Works
 
-### Steps
+The app collects user inputs (quality ratings, square footage, bedrooms, etc.) and reconstructs a full-featured row matching the training schema. It then:
 
-1. Adjust the sliders and inputs to describe your property.
-2. Click **"Predict Price"**.
-3. The estimated sale price will appear as a green success banner.
-
----
-
-## 🤖 Model Details
-
-### Training Data
-The model was trained on the [Ames Housing Dataset](https://www.kaggle.com/c/house-prices-advanced-regression-techniques), which contains 79 explanatory variables describing residential homes in Ames, Iowa.
-
-### Preprocessing Pipeline
-
-```
-Raw Input
-    │
-    ▼
-Ordinal Encoding       ← ExterQual, KitchenQual, BsmtQual, GarageFinish, etc.
-    │
-    ▼
-One-Hot Encoding       ← All remaining categorical/object columns
-    │
-    ▼
-Column Alignment       ← Reindex to training column order (fill missing = 0)
-    │
-    ▼
-Standard Scaling       ← StandardScaler fitted on training data
-    │
-    ▼
-Model Prediction       ← Trained regression model (house_model.pkl)
-    │
-    ▼
-Predicted Sale Price   💰
-```
-
-### Ordinal Features Encoded
-
-| Column | Order (low → high) |
-|---|---|
-| `ExterQual`, `ExterCond`, `HeatingQC`, `KitchenQual` | Po → Fa → TA → Gd → Ex |
-| `BsmtQual`, `BsmtCond` | NA → Po → Fa → TA → Gd → Ex |
-| `GarageFinish` | NA → Unf → RFn → Fin |
-| `BsmtExposure` | NA → No → Mn → Av → Gd |
-| `PavedDrive` | N → P → Y |
-| `Functional` | Sal → Sev → Maj2 → … → Typ |
-
----
-
-## 🔧 How the Inference Pipeline Stays Aligned with Training
-
-A common pitfall in ML deployment is **feature mismatch** between training and inference. This app avoids it with two key fixes:
+1. Applies the same **ordinal encoding** used during training
+2. Applies the same **one-hot encoding** via `pd.get_dummies`
+3. **Reindexes** the row to match training column order exactly (missing columns filled with `0`)
+4. **Scales** the row using the saved `scaler.pkl`
+5. Runs inference with `house_model.pkl` and displays the predicted price
 
 ```python
-# 1. Reindex columns to exactly match training order
+# Column alignment (ensures inference matches training schema exactly)
 df = df.reindex(columns=column_names, fill_value=0)
 
-# 2. Scale with the same fitted scaler from training
+# Scale and predict
 df_scaled = scaler.transform(df)
+predicted_price = model.predict(df_scaled)[0]
 ```
 
-This ensures the model always receives features in the **exact same shape and scale** it was trained on.
+---
+
+## 📊 User Input Features
+
+| Feature | Type | Description |
+|---|---|---|
+| Overall Quality | Slider (1–10) | General material and finish quality |
+| Overall Condition | Slider (1–10) | General condition of the house |
+| Year Built | Number | Original construction year |
+| Living Area | Number | Above-grade living area (sq ft) |
+| Basement Area | Number | Total basement square footage |
+| Garage Size | Number | Garage capacity (no. of cars) |
+| Full Bathrooms | Number | Number of full bathrooms |
+| Bedrooms | Number | Bedrooms above ground |
+| Kitchen Quality | Dropdown | Po / Fa / TA / Gd / Ex |
 
 ---
 
-## 📊 Example Predictions
+## 📌 Notes
 
-| Quality | Area (sq ft) | Year Built | Bedrooms | Predicted Price |
-|---|---|---|---|---|
-| 5 | 1,200 | 1985 | 3 | ~$120,000 |
-| 7 | 1,800 | 2000 | 3 | ~$185,000 |
-| 9 | 2,500 | 2005 | 4 | ~$295,000 |
-
-> *These are illustrative estimates. Actual predictions depend on the trained model.*
-
----
-
-## 🙌 Acknowledgements
-
-- [Ames Housing Dataset](https://www.kaggle.com/c/house-prices-advanced-regression-techniques) by Dean De Cock
-- [Streamlit](https://streamlit.io/) for the rapid web app framework
-- [scikit-learn](https://scikit-learn.org/) for model training and scaling utilities
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+- All non-user-input fields are set to sensible defaults representative of a typical property (e.g., `MSZoning = "RL"`, `Neighborhood = "NAmes"`).
+- The model predicts on a **single row**, so inference is near-instant.
+- Saved artifacts (`house_model.pkl`, `scaler.pkl`, `column_names.pkl`) must be in the same directory as `app.py`.
