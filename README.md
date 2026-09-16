@@ -1,204 +1,107 @@
-# 🏠 House Price Predictor
+# Ames Housing – Sale Price Predictor 🏠
 
-![Python](https://img.shields.io/badge/PYTHON-3.8%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![Streamlit](https://img.shields.io/badge/STREAMLIT-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)
-![scikit-learn](https://img.shields.io/badge/SCIKIT--LEARN-F7931E?style=for-the-badge&logo=scikit-learn&logoColor=white)
-![Pandas](https://img.shields.io/badge/PANDAS-150458?style=for-the-badge&logo=pandas&logoColor=white)
-![NumPy](https://img.shields.io/badge/NUMPY-013243?style=for-the-badge&logo=numpy&logoColor=white)
+Predict a home's sale price from the Ames Housing dataset using engineered features and a regularized linear pipeline, with a Streamlit app for interactive predictions.
 
-A machine learning project that predicts residential house sale prices using the classic **Ames Housing Dataset**. The core focus is a carefully engineered ML pipeline — covering missing value imputation, feature encoding, scaling, multi-model benchmarking, and hyperparameter tuning — culminating in a tuned **Gradient Boosting Regressor** exported for deployment.
+## 🛠️ Tools & Tech Stack
 
----
+![Python](https://img.shields.io/badge/Python-3.12-blue)
+![Pandas](https://img.shields.io/badge/Pandas-DataFrame-150458)
+![NumPy](https://img.shields.io/badge/NumPy-Array-013243)
+![scikit--learn](https://img.shields.io/badge/scikit--learn-Pipeline%20%7C%20Ridge%20%7C%20GridSearchCV-F7931E)
+![Matplotlib](https://img.shields.io/badge/Matplotlib-Plotting-11557C)
+![Seaborn](https://img.shields.io/badge/Seaborn-EDA-4C72B0)
+![Streamlit](https://img.shields.io/badge/Streamlit-Web%20App-FF4B4B)
+![Joblib](https://img.shields.io/badge/Joblib-Model%20Serialization-8A2BE2)
 
-## 📁 Project Structure
+## 📌 Overview
 
-```
-house-price-predictor/
-│
-├── House-Prediction.ipynb   # Full ML pipeline (EDA → training → export)
-├── app.py                   # Streamlit web application
-├── train.csv                # Training data (Ames Housing Dataset)
-├── test.csv                 # Test data
-│
-├── house_model.pkl          # Serialized trained model
-├── scaler.pkl               # Serialized StandardScaler
-└── column_names.pkl         # Serialized training column order
-```
+This project analyzes the Ames Housing dataset to identify what drives home sale prices, and builds a regression pipeline to predict them. It includes:
 
----
+- Exploratory Data Analysis (EDA) covering distributions, skewness, and correlation with `SalePrice`
+- Feature engineering to combine related raw features into more informative ones
+- A nested preprocessing pipeline handling numeric, log-skewed, ordinal, and nominal features differently
+- Cross-validation and hyperparameter tuning on a log-transformed target
+- A Streamlit app that predicts sale price from a compact set of the most important inputs
 
-## ⚙️ Tech Stack
+## 📊 Dataset
 
-| Layer | Library / Tool |
-|---|---|
-| Data Processing | `pandas`, `numpy` |
-| Visualization | `matplotlib`, `seaborn` |
-| Encoding | `pandas.CategoricalDtype` |
-| Scaling | `sklearn.preprocessing.StandardScaler` |
-| Modeling | `scikit-learn`, `xgboost` |
-| Hyperparameter Tuning | `RandomizedSearchCV` |
-| Serialization | `pickle` |
-| Web App | `streamlit` |
+The dataset (`train.csv`) is the classic Ames Housing dataset, with ~80 features describing each home (lot size, quality ratings, basement/garage details, neighborhood, sale conditions, etc.) and a `SalePrice` target.
 
----
+## 🔍 Exploratory Data Analysis
 
-## 🔬 ML Pipeline Overview
+Key steps performed in the notebook:
+- Checked shape, data types, summary statistics, and confirmed no duplicate rows
+- Quantified missing values per feature to plan imputation strategy
+- Found `SalePrice` is right-skewed and applied a log transform (`log1p`) to normalize it
+- Identified and visualized other heavily skewed numerical features (skew > 0.75)
+- Built a correlation heatmap and ranked features by correlation with `SalePrice`
+- Scatter-plotted key features (`GrLivArea`, `TotalBsmtSF`, `GarageArea`, `1stFlrSF`) against `SalePrice` and flagged outliers
 
-### 1. Data Integration
-Training and test sets are concatenated for unified preprocessing:
-```python
-df = pd.concat([df_train, df_test])
-```
+## 🏗️ Feature Engineering
 
-### 2. Missing Value Imputation
-Missing values were handled using domain knowledge and statistical reasoning:
+- `TotalSF` = `TotalBsmtSF` + `1stFlrSF` + `2ndFlrSF`
+- `TotalFullBath` = `FullBath` + `BsmtFullBath`
+- `TotalHalfBath` = `BsmtHalfBath` + `HalfBath`
+- `HouseAge` = `YrSold` − `YearBuilt`
+- Dropped the original components of the above (plus `Id`, `GarageArea`, `TotRmsAbvGrd`, `GarageYrBlt`) once the combined features were created
+- Removed outliers (`GrLivArea`, `TotalBsmtSF`, `1stFlrSF` ≥ 4000 sqft) and the single row with a missing `Electrical` value
 
-| Strategy | Features |
-|---|---|
-| **Mode** (categorical) | `MSZoning`, `Electrical`, `KitchenQual`, `Functional`, `SaleType` |
-| **Median** (skewed numerical) | `LotFrontage` |
-| **Constant `"NA"`** (domain knowledge) | `Alley`, `FireplaceQu`, `PoolQC`, `Fence`, `MiscFeature`, all Basement & Garage categoricals |
-| **Constant `0`** (absence of feature) | All Basement & Garage numerical features |
+## ⚙️ Preprocessing & Modeling Pipeline
 
-### 3. Feature Transformation
-Year and month columns were converted from numeric to categorical strings to prevent the model from treating them as continuous ordinal values:
-```python
-for_num_conv = ["MSSubClass", "YearBuilt", "YearRemodAdd", "GarageYrBlt", "MoSold", "YrSold"]
-for feat in for_num_conv:
-    df_mvi[feat] = df_mvi[feat].astype(str)
+Built as a nested `scikit-learn` `Pipeline` with a `ColumnTransformer` combining four branches:
 
-# Month numbers converted to abbreviations (e.g., 6 → "Jun")
-df_mvi["MoSold"] = df_mvi["MoSold"].apply(lambda x: calendar.month_abbr[x])
-```
+| Branch | Features | Steps |
+|---|---|---|
+| Ordinary numerical | Non-skewed numeric features | Median impute → `StandardScaler` |
+| Log-transformed numerical | Skewed numeric features (skew > 0.75) | Median impute → `log1p` → `StandardScaler` |
+| Ordinal | Quality/condition-style columns (e.g. `ExterQual`, `BsmtQual`, `KitchenQual`) | Constant impute (`"None"`) → `OrdinalEncoder` with explicit category ordering |
+| Nominal | Categorical columns (e.g. `Neighborhood`, `Exterior1st`, `SaleCondition`) | Constant impute (`"None"`) → `OneHotEncoder(handle_unknown="ignore")` |
 
-### 4. Encoding
+The target (`SalePrice`) is log-transformed (`log1p`) before training and predictions are converted back with `expm1`.
 
-**Ordinal Encoding** — applied to 17 quality/condition features where order matters (e.g., `Po < Fa < TA < Gd < Ex`):
-```python
-df_mvi["KitchenQual"] = df_mvi["KitchenQual"].astype(
-    CategoricalDtype(categories=["Po", "Fa", "TA", "Gd", "Ex"], ordered=True)
-).cat.codes
-```
+**Model:** `Ridge` regression, tuned via `GridSearchCV` over `alpha` with 5-fold cross-validation (scored on R²), then evaluated on the held-out test set with **R², RMSE, and MAE**. The fitted pipeline is serialized with `joblib` (`model.pkl`).
 
-**One-Hot Encoding** — applied to all remaining nominal categorical columns:
-```python
-object_features = df_encode.select_dtypes(include="object").columns.tolist()
-df_encode = pd.get_dummies(df_encode, columns=object_features, drop_first=True)
-```
+## 🖥️ Streamlit App
 
-### 5. Feature Scaling
-`StandardScaler` (z-score normalization) was fit **only on training data** and persisted for use during inference:
-```python
-# Formula: z = (x - μ) / σ
-sc = StandardScaler()
-sc.fit(X_train)
+`app.py` loads the trained pipeline and starts from a full default row covering every feature the model expects. It only exposes the ~12 features most correlated with `SalePrice` (overall quality, living area, total square footage, garage cars, bathrooms, bedrooms, condition, year remodeled, house age, fireplaces, finished basement area, masonry veneer area) as editable inputs — everything else keeps its default. Predictions are converted back from log scale before display.
 
-pickle.dump(sc, open("scaler.pkl", "wb"))
-pickle.dump(list(X_train.columns), open("column_names.pkl", "wb"))
+## 🚀 Getting Started
 
-X_train = sc.transform(X_train)
-X_test = sc.transform(X_test)
-```
-
-### 6. Model Selection
-Nine regression models were evaluated using **7-Fold Cross-Validation** with R² scoring:
-
-```python
-models = {
-    "LinearRegression", "SVR", "SGDRegressor",
-    "KNeighborsRegressor", "GaussianProcessRegressor",
-    "DecisionTreeRegressor", "GradientBoostingRegressor",
-    "RandomForestRegressor", "XGBRegressor"
-}
-
-def test_model(model):
-    cv = KFold(n_splits=7, shuffle=True, random_state=45)
-    r2 = make_scorer(r2_score)
-    r2_val_score = cross_val_score(model, X_train, y_train, cv=cv, scoring=r2)
-    return [r2_val_score.mean()]
-```
-
-**GradientBoostingRegressor** achieved the best cross-validated R² and was selected for tuning.
-
-### 7. Hyperparameter Tuning
-`RandomizedSearchCV` with 25 iterations was used to efficiently search the hyperparameter space:
-```python
-param_dist = {
-    "n_estimators":      [100, 200, 300, 400, 500],
-    "learning_rate":     [0.01, 0.03, 0.05, 0.1],
-    "max_depth":         [3, 4, 5],
-    "min_samples_split": [2, 5, 10],
-    "min_samples_leaf":  [1, 2, 4],
-    "subsample":         [0.8, 0.9, 1.0]
-}
-
-random_search = RandomizedSearchCV(
-    gbr, param_distributions=param_dist,
-    n_iter=25, cv=cv, scoring="r2",
-    n_jobs=-1, random_state=42
-)
-```
-
-The best estimator was retrained on the full training set and serialized:
-```python
-pickle.dump(best_model, open("house_model.pkl", "wb"))
-```
-
----
-
-## 🖥️ Running the App
-
-### Prerequisites
-
+### 1. Clone the repository
 ```bash
-pip install streamlit scikit-learn pandas numpy xgboost
+git clone https://github.com/<your-username>/ames-housing-price-predictor.git
+cd ames-housing-price-predictor
 ```
 
-### Launch
+### 2. Install dependencies
+```bash
+pip install pandas numpy scikit-learn matplotlib seaborn streamlit joblib
+```
 
+### 3. Train the model (optional — a pretrained `model.pkl` can be used instead)
+Run through `HousePricePredictor.ipynb` to reproduce the EDA, feature engineering, and model training.
+
+### 4. Run the app
 ```bash
 streamlit run app.py
 ```
 
-### How It Works
+## 📂 Project Structure
 
-The app collects user inputs (quality ratings, square footage, bedrooms, etc.) and reconstructs a full-featured row matching the training schema. It then:
-
-1. Applies the same **ordinal encoding** used during training
-2. Applies the same **one-hot encoding** via `pd.get_dummies`
-3. **Reindexes** the row to match training column order exactly (missing columns filled with `0`)
-4. **Scales** the row using the saved `scaler.pkl`
-5. Runs inference with `house_model.pkl` and displays the predicted price
-
-```python
-# Column alignment (ensures inference matches training schema exactly)
-df = df.reindex(columns=column_names, fill_value=0)
-
-# Scale and predict
-df_scaled = scaler.transform(df)
-predicted_price = model.predict(df_scaled)[0]
+```
+├── HousePricePredictor.ipynb   # EDA, feature engineering, pipeline, tuning & evaluation
+├── app.py                      # Streamlit app for predictions
+├── model.pkl                   # Serialized trained pipeline
+└── README.md
 ```
 
----
+## 📈 Possible Improvements
 
-## 📊 User Input Features
+- Compare Ridge/Lasso against gradient-boosted models (XGBoost, LightGBM) or a stacked ensemble
+- Expand hyperparameter search beyond `alpha` (e.g. polynomial features, feature selection)
+- Add residual and prediction-error plots for deeper model diagnostics
+- Deploy the app (Streamlit Community Cloud / Docker)
 
-| Feature | Type | Description |
-|---|---|---|
-| Overall Quality | Slider (1–10) | General material and finish quality |
-| Overall Condition | Slider (1–10) | General condition of the house |
-| Year Built | Number | Original construction year |
-| Living Area | Number | Above-grade living area (sq ft) |
-| Basement Area | Number | Total basement square footage |
-| Garage Size | Number | Garage capacity (no. of cars) |
-| Full Bathrooms | Number | Number of full bathrooms |
-| Bedrooms | Number | Bedrooms above ground |
-| Kitchen Quality | Dropdown | Po / Fa / TA / Gd / Ex |
+## 📝 License
 
----
-
-## 📌 Notes
-
-- All non-user-input fields are set to sensible defaults representative of a typical property (e.g., `MSZoning = "RL"`, `Neighborhood = "NAmes"`).
-- The model predicts on a **single row**, so inference is near-instant.
-- Saved artifacts (`house_model.pkl`, `scaler.pkl`, `column_names.pkl`) must be in the same directory as `app.py`.
+This project is open-sourced for educational purposes.
